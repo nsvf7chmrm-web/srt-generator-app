@@ -1,96 +1,118 @@
+import os
+import subprocess
 from pathlib import Path
-import shutil
-import uuid
-
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, FileResponse
-
-from app.pipeline import generate_srt
-
-
-app = FastAPI(title="SRT Generator")
-
+from faster_whisper import WhisperModel
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = BASE_DIR / "outputs"
-TEMPLATE_PATH = BASE_DIR / "templates" / "index.html"
 
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(exist_ok=True)
 
-
-@app.get("/", response_class=HTMLResponse)
-def home():
-    return TEMPLATE_PATH.read_text(encoding="utf-8")
+FFMPEG = "ffmpeg"
 
 
-@app.post("/generate", response_class=HTMLResponse)
-async def generate(
-    file: UploadFile = File(...),
-    language: str = Form("es"),
-    audio_profile: str = Form("old_film"),
-):
-    job_id = str(uuid.uuid4())
+def extract_audio(video_path, audio_path):
+    cmd = [
+        FFMPEG,
+        "-i", str(video_path),
+        "-vn",
+        "-acodec", "pcm_s16le",
+        "-ar", "16000",
+        "-ac", "1",
+        str(audio_path)
+    ]
+    subprocess.run(cmd, check=True)
 
-    suffix = Path(file.filename or "video.mp4").suffix or ".mp4"
-    original_stem = Path(file.filename or "video").stem
 
-    video_path = UPLOAD_DIR / f"{job_id}{suffix}"
-    output_dir = OUTPUT_DIR / job_id
+def split_audio(audio_path, chunk_dir, chunk_length=60):
+    chunk_dir.mkdir(exist_ok=True)
+    cmd = [
+        FFMPEG,
+        "-i", str(audio_path),
+        "-f", "segment",
+        "-segment_time", str(chunk_length),
+        "-c", "copy",
+        str(chunk_dir / "chunk_%03d.wav")
+    ]
+    subprocess.run(cmd, check=True)
 
-    with video_path.open("wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
 
-    srt_path = generate_srt(
-        video_path=video_path,
-        output_dir=output_dir,
-        language=language,
-        audio_profile=audio_profile,
+def transcribe_chunks(chunk_dir, language="es"):
+    print("🔥 Cargando modelo GPU...")
+    model = WhisperModel(
+        "large-v3",
+        device="cuda",
+        compute_type="float16"
     )
 
-    if not srt_path.exists():
-        return HTMLResponse(
-            "<h2>Error: no se generó el archivo SRT.</h2>",
-            status_code=500,
+    all_segments = []
+    current_time = 0
+
+    chunks = sorted(chunk_dir.glob("*.wav"))
+
+    for i, chunk in enumerate(chunks):
+        print(f"🎧 Procesando chunk {i+1}/{len(chunks)}")
+
+        segments, _ = model.transcribe(
+            str(chunk),
+            language=language,
+            vad_filter=True
         )
 
-    return HTMLResponse(f"""
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <title>SRT listo</title>
-    </head>
-    <body style="font-family: Arial; background:#0f172a; color:#e2e8f0; display:flex; justify-content:center; align-items:center; min-height:100vh; margin:0;">
-      <div style="background:#1e293b; padding:32px; border-radius:14px; text-align:center; width:420px;">
-        <h2>✅ SRT generado correctamente</h2>
-        <p>Tu archivo está listo para descargar.</p>
-        <a href="/download/{job_id}/{original_stem}"
-           style="display:inline-block; margin-top:18px; padding:14px 24px; background:#3b82f6; color:white; text-decoration:none; border-radius:8px; font-weight:bold;">
-          Descargar SRT
-        </a>
-        <br><br>
-        <a href="/" style="color:#93c5fd;">Procesar otro video</a>
-      </div>
-    </body>
-    </html>
-    """)
+        for seg in segments:
+            seg.start += current_time
+            seg.end += current_time
+            all_segments.append(seg)
+
+        current_time += 60  # duración chunk
+
+    return all_segments
 
 
-@app.get("/download/{job_id}/{original_stem}")
-def download(job_id: str, original_stem: str):
-    output_dir = OUTPUT_DIR / job_id
-    srt_path = output_dir / "output.srt"
+def format_time(seconds):
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int((seconds - int(seconds)) * 1000)
+    return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
-    if not srt_path.exists():
-        return HTMLResponse(
-            "<h2>Error: no encontré el archivo SRT.</h2>",
-            status_code=404,
-        )
 
-    return FileResponse(
-        path=srt_path,
-        media_type="application/x-subrip",
-        filename=f"{original_stem}.srt",
-    )
+def write_srt(segments, output_file):
+    with open(output_file, "w", encoding="utf-8") as f:
+        for i, seg in enumerate(segments, start=1):
+            f.write(f"{i}\n")
+            f.write(f"{format_time(seg.start)} --> {format_time(seg.end)}\n")
+            f.write(f"{seg.text.strip()}\n\n")
+
+
+def generate_srt(video_path, language="es"):
+    job_id = video_path.stem
+    work_dir = OUTPUT_DIR / job_id
+    chunk_dir = work_dir / "chunks"
+
+    work_dir.mkdir(exist_ok=True)
+
+    audio_path = work_dir / "audio.wav"
+
+    print("🎬 Extrayendo audio...")
+    extract_audio(video_path, audio_path)
+
+    print("✂️ Dividiendo en chunks...")
+    split_audio(audio_path, chunk_dir)
+
+    print("🧠 Transcribiendo...")
+    segments = transcribe_chunks(chunk_dir, language)
+
+    srt_path = work_dir / "output.srt"
+
+    print("📝 Generando SRT...")
+    write_srt(segments, srt_path)
+
+    return srt_path
+
+
+if __name__ == "__main__":
+    video_file = UPLOAD_DIR / "test.mp4"
+    generate_srt(video_file)
