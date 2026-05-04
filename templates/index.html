@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Generador SRT</title>
+
+<style>
+body {
+  font-family: Arial;
+  background: #0f172a;
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.container {
+  background: #1e293b;
+  padding: 30px;
+  border-radius: 12px;
+  width: 400px;
+}
+
+.progress {
+  width: 100%;
+  background: #334155;
+  border-radius: 6px;
+  margin-top: 20px;
+}
+
+.progress-bar {
+  height: 12px;
+  width: 0%;
+  background: #3b82f6;
+  border-radius: 6px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Generar Subtítulos (.srt)</h2>
+
+<form id="form" action="/generate" method="post" enctype="multipart/form-data">
+
+<input type="file" name="file" required>
+
+<br><br>
+
+<label>Idioma</label>
+<select name="language">
+<option value="es">Español</option>
+<option value="en">Inglés</option>
+<option value="auto">Auto</option>
+</select>
+
+<br><br>
+
+<label>Tipo de audio</label>
+<select name="audio_profile">
+<option value="old_film">Película antigua</option>
+<option value="music_effects">Música y efectos</option>
+<option value="clean">Limpio</option>
+</select>
+
+<br><br>
+
+<button type="submit">Generar SRT</button>
+
+</form>
+
+<div id="progress-section" style="display:none;">
+<p>Procesando video...</p>
+
+<div class="progress">
+<div class="progress-bar" id="bar"></div>
+</div>
+
+<p id="percent">0%</p>
+
+<p style="font-size:12px; color:#94a3b8;">
+Esto puede tardar varios minutos.
+</p>
+</div>
+
+</div>
+
+<script>
+const form = document.getElementById("form");
+const bar = document.getElementById("bar");
+const percent = document.getElementById("percent");
+const section = document.getElementById("progress-section");
+
+form.addEventListener("submit", function () {
+
+  section.style.display = "block";
+
+  let progress = 0;
+
+  const interval = setInterval(() => {
+    if (progress < 95) {
+      progress += Math.random() * 3;
+      bar.style.width = progress + "%";
+      percent.innerText = Math.floor(progress) + "%";
+    }
+  }, 1000);
+
+});
+</script>
+
+</body>
+</html>
