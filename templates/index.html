@@ -1,115 +1,262 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<title>Generador SRT</title>
+  <meta charset="UTF-8">
+  <title>Subtitle Studio</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<style>
-body {
-  font-family: Arial;
-  background: #0f172a;
-  color: white;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-}
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
 
-.container {
-  background: #1e293b;
-  padding: 30px;
-  border-radius: 12px;
-  width: 400px;
-}
+    .container {
+      width: 900px;
+      max-width: 92%;
+    }
 
-.progress {
-  width: 100%;
-  background: #334155;
-  border-radius: 6px;
-  margin-top: 20px;
-}
+    h1 {
+      text-align: center;
+      font-size: 36px;
+      margin-bottom: 8px;
+    }
 
-.progress-bar {
-  height: 12px;
-  width: 0%;
-  background: #3b82f6;
-  border-radius: 6px;
-}
-</style>
+    .subtitle {
+      text-align: center;
+      color: #94a3b8;
+      margin-bottom: 32px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .card {
+      background: #1e293b;
+      padding: 28px;
+      border-radius: 16px;
+      box-shadow: 0 0 24px rgba(0,0,0,0.35);
+    }
+
+    .card h2 {
+      margin-top: 0;
+      font-size: 22px;
+    }
+
+    .card p {
+      color: #cbd5e1;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    label {
+      display: block;
+      margin-top: 14px;
+      font-size: 14px;
+      color: #e2e8f0;
+    }
+
+    input, select, textarea, button {
+      width: 100%;
+      margin-top: 6px;
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    button {
+      margin-top: 20px;
+      background: #3b82f6;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: #2563eb;
+    }
+
+    .secondary-button {
+      background: #14b8a6;
+    }
+
+    .secondary-button:hover {
+      background: #0f766e;
+    }
+
+    .note {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .progress-section {
+      display: none;
+      margin-top: 16px;
+    }
+
+    .progress {
+      width: 100%;
+      background: #334155;
+      border-radius: 6px;
+      margin-top: 10px;
+    }
+
+    .progress-bar {
+      height: 12px;
+      width: 0%;
+      background: #3b82f6;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 760px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 
 <body>
+  <div class="container">
+    <h1>Subtitle Studio</h1>
+    <div class="subtitle">
+      Genera subtítulos originales desde video o traduce archivos SRT existentes.
+    </div>
 
-<div class="container">
+    <div class="grid">
 
-<h2>Generar Subtítulos (.srt)</h2>
+      <div class="card">
+        <h2>Crear SRT desde video</h2>
+        <p>
+          Sube una película o video y genera un archivo .srt en el idioma original.
+          Ideal para crear un master transcript listo para revisión.
+        </p>
 
-<form id="form" action="/generate" method="post" enctype="multipart/form-data">
+        <form id="video-form" action="/generate" method="post" enctype="multipart/form-data">
+          <label>Subir video</label>
+          <input type="file" name="file" accept="video/*" required>
 
-<input type="file" name="file" required>
+          <label>Idioma original</label>
+          <select name="language">
+            <option value="es">Español</option>
+            <option value="en">Inglés</option>
+            <option value="fr">Francés</option>
+            <option value="it">Italiano</option>
+            <option value="pt">Portugués</option>
+            <option value="de">Alemán</option>
+            <option value="auto">Detectar automáticamente</option>
+          </select>
 
-<br><br>
+          <label>Tipo de audio</label>
+          <select name="audio_profile">
+            <option value="clean">Audio limpio</option>
+            <option value="music_effects">Película con música y efectos</option>
+            <option value="old_film" selected>Película antigua / audio difícil</option>
+          </select>
 
-<label>Idioma</label>
-<select name="language">
-<option value="es">Español</option>
-<option value="en">Inglés</option>
-<option value="auto">Auto</option>
-</select>
+          <button type="submit">Generar SRT original</button>
+        </form>
 
-<br><br>
+        <div id="video-progress" class="progress-section">
+          <p>Procesando video...</p>
+          <div class="progress">
+            <div id="video-bar" class="progress-bar"></div>
+          </div>
+          <p id="video-percent">0%</p>
+          <div class="note">Este proceso puede tardar varios minutos.</div>
+        </div>
+      </div>
 
-<label>Tipo de audio</label>
-<select name="audio_profile">
-<option value="old_film">Película antigua</option>
-<option value="music_effects">Música y efectos</option>
-<option value="clean">Limpio</option>
-</select>
+      <div class="card">
+        <h2>Traducir SRT existente</h2>
+        <p>
+          Sube un archivo .srt y genera una traducción conservando timecodes.
+          Útil si ya tienes subtítulos base y solo necesitas localización.
+        </p>
 
-<br><br>
+        <form id="translate-form" action="/translate-srt" method="post" enctype="multipart/form-data">
+          <label>Subir archivo SRT</label>
+          <input type="file" name="srt_file" accept=".srt" required>
 
-<button type="submit">Generar SRT</button>
+          <label>Idioma original</label>
+          <select name="source_language">
+            <option value="es">Español</option>
+            <option value="en">Inglés</option>
+            <option value="fr">Francés</option>
+            <option value="it">Italiano</option>
+            <option value="pt">Portugués</option>
+            <option value="de">Alemán</option>
+          </select>
 
-</form>
+          <label>Idioma destino</label>
+          <select name="target_language">
+            <option value="en">Inglés</option>
+            <option value="es">Español</option>
+            <option value="fr">Francés</option>
+            <option value="it">Italiano</option>
+            <option value="pt">Portugués</option>
+            <option value="de">Alemán</option>
+          </select>
 
-<div id="progress-section" style="display:none;">
-<p>Procesando video...</p>
+          <label>Instrucciones especiales</label>
+          <textarea name="instructions" placeholder="Ej: conservar nombres propios, tono neutro, estilo festival, no traducir canciones..."></textarea>
 
-<div class="progress">
-<div class="progress-bar" id="bar"></div>
-</div>
+          <button class="secondary-button" type="submit">Traducir SRT</button>
+        </form>
 
-<p id="percent">0%</p>
+        <div id="translate-progress" class="progress-section">
+          <p>Traduciendo SRT...</p>
+          <div class="progress">
+            <div id="translate-bar" class="progress-bar"></div>
+          </div>
+          <p id="translate-percent">0%</p>
+          <div class="note">La traducción conserva los timecodes originales.</div>
+        </div>
+      </div>
 
-<p style="font-size:12px; color:#94a3b8;">
-Esto puede tardar varios minutos.
-</p>
-</div>
+    </div>
+  </div>
 
-</div>
+  <script>
+    function fakeProgress(formId, sectionId, barId, percentId) {
+      const form = document.getElementById(formId);
+      const section = document.getElementById(sectionId);
+      const bar = document.getElementById(barId);
+      const percent = document.getElementById(percentId);
 
-<script>
-const form = document.getElementById("form");
-const bar = document.getElementById("bar");
-const percent = document.getElementById("percent");
-const section = document.getElementById("progress-section");
+      form.addEventListener("submit", function () {
+        section.style.display = "block";
+        let progress = 0;
 
-form.addEventListener("submit", function () {
-
-  section.style.display = "block";
-
-  let progress = 0;
-
-  const interval = setInterval(() => {
-    if (progress < 95) {
-      progress += Math.random() * 3;
-      bar.style.width = progress + "%";
-      percent.innerText = Math.floor(progress) + "%";
+        setInterval(() => {
+          if (progress < 95) {
+            progress += Math.random() * 2.5;
+            bar.style.width = progress + "%";
+            percent.innerText = Math.floor(progress) + "%";
+          }
+        }, 1000);
+      });
     }
-  }, 1000);
 
-});
-</script>
-
+    fakeProgress("video-form", "video-progress", "video-bar", "video-percent");
+    fakeProgress("translate-form", "translate-progress", "translate-bar", "translate-percent");
+  </script>
 </body>
 </html>
