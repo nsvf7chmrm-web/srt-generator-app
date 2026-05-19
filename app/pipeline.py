@@ -195,7 +195,7 @@ def transcribe_chunk(
         "beam_size": 1,
         "best_of": 1,
         "temperature": 0.0,
-        "vad_filter": True,
+        "vad_filter": False,
         "vad_parameters": dict(
             min_silence_duration_ms=settings["min_silence_duration_ms"]
         ),
