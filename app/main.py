@@ -6,10 +6,10 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, FileResponse
 
 from app.pipeline import generate_srt
+from app.translate import translate_srt_file
 
 
 app = FastAPI(title="Subtitle Studio")
-
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
@@ -50,18 +50,12 @@ async def generate(
     )
 
     if not srt_path.exists():
-        return HTMLResponse(
-            "<h2>Error: no se generó el archivo SRT.</h2>",
-            status_code=500,
-        )
+        return HTMLResponse("<h2>Error: no se generó el archivo SRT.</h2>", status_code=500)
 
     return HTMLResponse(f"""
     <!DOCTYPE html>
     <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <title>SRT listo</title>
-    </head>
+    <head><meta charset="UTF-8"><title>SRT listo</title></head>
     <body style="font-family: Arial; background:#0f172a; color:#e2e8f0; display:flex; justify-content:center; align-items:center; min-height:100vh; margin:0;">
       <div style="background:#1e293b; padding:32px; border-radius:14px; text-align:center; width:440px;">
         <h2>✅ SRT generado correctamente</h2>
@@ -80,14 +74,10 @@ async def generate(
 
 @app.get("/download/{job_id}/{original_stem}")
 def download(job_id: str, original_stem: str):
-    output_dir = OUTPUT_DIR / job_id
-    srt_path = output_dir / "output.srt"
+    srt_path = OUTPUT_DIR / job_id / "output.srt"
 
     if not srt_path.exists():
-        return HTMLResponse(
-            "<h2>Error: no encontré el archivo SRT.</h2>",
-            status_code=404,
-        )
+        return HTMLResponse("<h2>Error: no encontré el archivo SRT.</h2>", status_code=404)
 
     return FileResponse(
         path=srt_path,
@@ -103,11 +93,6 @@ async def translate_srt(
     target_language: str = Form("en"),
     instructions: str = Form(""),
 ):
-    """
-    Endpoint provisional para el segundo módulo.
-    Por ahora guarda el SRT y devuelve una pantalla de 'motor pendiente'.
-    Luego aquí conectamos tu motor real de traducción.
-    """
     job_id = str(uuid.uuid4())
 
     original_stem = Path(srt_file.filename or "subtitles").stem
@@ -118,25 +103,46 @@ async def translate_srt(
     with input_srt_path.open("wb") as buffer:
         shutil.copyfileobj(srt_file.file, buffer)
 
+    translated_path = translate_srt_file(
+        input_path=input_srt_path,
+        source_lang=source_language,
+        target_lang=target_language,
+        output_dir=output_dir,
+        chunk_size=20,
+    )
+
+    if not translated_path.exists():
+        return HTMLResponse("<h2>Error: no se generó la traducción.</h2>", status_code=500)
+
     return HTMLResponse(f"""
     <!DOCTYPE html>
     <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <title>Traducción pendiente</title>
-    </head>
+    <head><meta charset="UTF-8"><title>Traducción lista</title></head>
     <body style="font-family: Arial; background:#0f172a; color:#e2e8f0; display:flex; justify-content:center; align-items:center; min-height:100vh; margin:0;">
       <div style="background:#1e293b; padding:32px; border-radius:14px; text-align:center; width:520px;">
-        <h2>🟡 SRT recibido correctamente</h2>
-        <p>El archivo fue subido y el flujo de traducción ya está preparado.</p>
-        <p><strong>Idioma original:</strong> {source_language}</p>
-        <p><strong>Idioma destino:</strong> {target_language}</p>
-        <p style="font-size:13px; color:#94a3b8;">
-          Siguiente paso: conectar aquí el motor real de traducción SRT.
-        </p>
-        <br>
+        <h2>✅ SRT traducido correctamente</h2>
+        <p>Tu archivo traducido está listo para descargar.</p>
+        <a href="/download-translated/{job_id}/{translated_path.name}"
+           style="display:inline-block; margin-top:18px; padding:14px 24px; background:#14b8a6; color:white; text-decoration:none; border-radius:8px; font-weight:bold;">
+          Descargar SRT traducido
+        </a>
+        <br><br>
         <a href="/" style="color:#93c5fd;">Volver al inicio</a>
       </div>
     </body>
     </html>
     """)
+
+
+@app.get("/download-translated/{job_id}/{filename}")
+def download_translated(job_id: str, filename: str):
+    srt_path = OUTPUT_DIR / job_id / filename
+
+    if not srt_path.exists():
+        return HTMLResponse("<h2>Error: no encontré el archivo traducido.</h2>", status_code=404)
+
+    return FileResponse(
+        path=srt_path,
+        media_type="application/x-subrip",
+        filename=filename,
+    )
