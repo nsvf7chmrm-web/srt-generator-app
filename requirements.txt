@@ -7,3 +7,5 @@ ctranslate2
 tokenizers
 huggingface-hub
 tqdm
+openai
+python-dotenv
