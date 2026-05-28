@@ -2,6 +2,7 @@ from pathlib import Path
 import subprocess
 import re
 from faster_whisper import WhisperModel
+from app.subtitle_utils import split_long_segments
 
 
 FFMPEG_PATH = "ffmpeg"
@@ -332,6 +333,7 @@ def generate_srt(
 
     print("5) Uniendo segmentos cercanos...")
     final_segments = merge_close_segments(all_segments)
+    final_segments = split_long_segments(final_segments)
 
     print(f"6) Escribiendo SRT en: {srt_path}")
     write_srt(final_segments, srt_path)
