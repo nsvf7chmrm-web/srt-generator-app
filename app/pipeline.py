@@ -10,9 +10,6 @@ FFPROBE_PATH = "ffprobe"
 
 
 def extract_audio(video_path: Path, audio_path: Path) -> None:
-    """
-    Extrae el audio del video y lo convierte a WAV mono 16 kHz.
-    """
     cmd = [
         FFMPEG_PATH,
         "-y",
@@ -21,21 +18,18 @@ def extract_audio(video_path: Path, audio_path: Path) -> None:
         "-acodec", "pcm_s16le",
         "-ar", "16000",
         "-ac", "1",
-        str(audio_path)
+        str(audio_path),
     ]
     subprocess.run(cmd, check=True)
 
 
 def get_audio_duration(audio_path: Path) -> float:
-    """
-    Devuelve la duración del audio en segundos usando ffprobe.
-    """
     cmd = [
         FFPROBE_PATH,
         "-v", "error",
         "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1",
-        str(audio_path)
+        str(audio_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return float(result.stdout.strip())
@@ -45,11 +39,8 @@ def extract_audio_chunk(
     audio_path: Path,
     chunk_path: Path,
     start_sec: float,
-    duration_sec: float
+    duration_sec: float,
 ) -> None:
-    """
-    Extrae un fragmento WAV del audio principal.
-    """
     cmd = [
         FFMPEG_PATH,
         "-y",
@@ -59,15 +50,12 @@ def extract_audio_chunk(
         "-acodec", "pcm_s16le",
         "-ar", "16000",
         "-ac", "1",
-        str(chunk_path)
+        str(chunk_path),
     ]
     subprocess.run(cmd, check=True)
 
 
 def sec_to_srt_time(seconds: float) -> str:
-    """
-    Convierte segundos float a formato SRT: HH:MM:SS,mmm
-    """
     total_ms = int(round(seconds * 1000))
     hours = total_ms // 3_600_000
     total_ms %= 3_600_000
@@ -79,23 +67,16 @@ def sec_to_srt_time(seconds: float) -> str:
 
 
 def normalize_text(text: str) -> str:
-    """
-    Limpia espacios y normaliza el texto.
-    """
     text = text.strip()
     text = re.sub(r"\s+", " ", text)
     return text
 
 
 def looks_like_english(text: str) -> bool:
-    """
-    Detector básico para frases obviamente en inglés.
-    Sirve para filtrar delirios grotescos cuando el idioma elegido no es inglés.
-    """
     lower = text.lower()
     english_markers = [
         " the ", " and ", " you ", " i ", " don't ", " thanks ",
-        " please ", " come on ", " very good ", " let's ", " goodbye "
+        " please ", " come on ", " very good ", " let's ", " goodbye ",
     ]
     padded = f" {lower} "
     hits = sum(marker in padded for marker in english_markers)
@@ -103,14 +84,13 @@ def looks_like_english(text: str) -> bool:
 
 
 def is_repetitive_text(text: str) -> bool:
-    """
-    Detecta repeticiones raras.
-    """
     words = text.lower().split()
+
     if len(words) < 6:
         return False
 
     unique_ratio = len(set(words)) / len(words)
+
     if unique_ratio < 0.45:
         return True
 
@@ -121,11 +101,7 @@ def is_repetitive_text(text: str) -> bool:
 
     return False
 
-
 def is_bad_segment(text: str, duration: float, language: str) -> bool:
-    """
-    Filtra segmentos claramente malos o delirantes.
-    """
     t = normalize_text(text)
     lower = t.lower()
 
@@ -138,7 +114,29 @@ def is_bad_segment(text: str, duration: float, language: str) -> bool:
         "[music]",
         "(music)",
     }
+
     if lower in banned_exact:
+        return True
+
+    # Frases típicas de hallucination SOLO si son muy cortas o aparecen aisladas
+    hallucination_exact = {
+        "gracias por ver",
+        "gracias por ver el video",
+        "thanks for watching",
+        "thank you for watching",
+        "la biblia",
+    }
+
+    if lower in hallucination_exact and duration < 12:
+        return True
+
+    # Si es una frase religiosa suelta sin contexto, probablemente hallucination
+    religious_noise = [
+        "iglesia de jesucristo de los santos de los últimos días",
+        "iglesia de jesucristo de los santos de los ultimos dias",
+    ]
+
+    if lower in religious_noise and duration < 15:
         return True
 
     if duration > 8 and len(t) < 15:
@@ -147,7 +145,6 @@ def is_bad_segment(text: str, duration: float, language: str) -> bool:
     if is_repetitive_text(t):
         return True
 
-    # Si el idioma esperado NO es inglés, filtramos inglés obvio inventado.
     if language != "en" and looks_like_english(t):
         return True
 
@@ -155,24 +152,21 @@ def is_bad_segment(text: str, duration: float, language: str) -> bool:
 
 
 def get_profile_settings(audio_profile: str) -> dict:
-    """
-    Define parámetros según el tipo de audio que el usuario elija.
-    """
     profiles = {
         "clean": {
             "chunk_duration": 60,
-            "min_silence_duration_ms": 500,
-            "no_speech_threshold": 0.6,
+            "min_silence_duration_ms": 600,
+            "no_speech_threshold": 0.7,
         },
         "music_effects": {
             "chunk_duration": 45,
-            "min_silence_duration_ms": 700,
-            "no_speech_threshold": 0.6,
+            "min_silence_duration_ms": 900,
+            "no_speech_threshold": 0.8,
         },
         "old_film": {
             "chunk_duration": 45,
-            "min_silence_duration_ms": 700,
-            "no_speech_threshold": 0.6,
+            "min_silence_duration_ms": 900,
+            "no_speech_threshold": 0.8,
         },
     }
 
@@ -184,11 +178,8 @@ def transcribe_chunk(
     chunk_path: Path,
     offset_sec: float,
     language: str,
-    audio_profile: str
+    audio_profile: str,
 ):
-    """
-    Transcribe un chunk y devuelve segmentos con tiempos absolutos.
-    """
     settings = get_profile_settings(audio_profile)
 
     transcribe_kwargs = {
@@ -196,10 +187,10 @@ def transcribe_chunk(
         "beam_size": 1,
         "best_of": 1,
         "temperature": 0.0,
-        "vad_filter": False,
-        "vad_parameters": dict(
-            min_silence_duration_ms=settings["min_silence_duration_ms"]
-        ),
+        "vad_filter": True,
+        "vad_parameters": {
+            "min_silence_duration_ms": settings["min_silence_duration_ms"],
+        },
         "word_timestamps": True,
         "condition_on_previous_text": False,
         "compression_ratio_threshold": 2.0,
@@ -207,13 +198,13 @@ def transcribe_chunk(
         "no_speech_threshold": settings["no_speech_threshold"],
     }
 
-    # Si el usuario elige detectar automáticamente, no forzamos idioma.
     if language != "auto":
         transcribe_kwargs["language"] = language
 
     segments, info = model.transcribe(str(chunk_path), **transcribe_kwargs)
 
     results = []
+
     for seg in segments:
         text = normalize_text(seg.text)
         start = seg.start + offset_sec
@@ -223,19 +214,18 @@ def transcribe_chunk(
         if is_bad_segment(text, duration, language):
             continue
 
-        results.append({
-            "start": start,
-            "end": end,
-            "text": text
-        })
+        results.append(
+            {
+                "start": start,
+                "end": end,
+                "text": text,
+            }
+        )
 
     return results
 
 
-def merge_close_segments(segments, max_gap=0.35, max_chars=84):
-    """
-    Une segmentos cercanos para evitar subtítulos ridículamente cortos.
-    """
+def merge_close_segments(segments, max_gap=0.35, max_chars=110):
     if not segments:
         return []
 
@@ -256,9 +246,6 @@ def merge_close_segments(segments, max_gap=0.35, max_chars=84):
 
 
 def write_srt(segments, srt_path: Path) -> None:
-    """
-    Escribe el archivo SRT final con formato estándar.
-    """
     with srt_path.open("w", encoding="utf-8") as f:
         for i, seg in enumerate(segments, start=1):
             start = sec_to_srt_time(seg["start"])
@@ -267,20 +254,15 @@ def write_srt(segments, srt_path: Path) -> None:
 
             f.write(f"{i}\n")
             f.write(f"{start} --> {end}\n")
-            f.write(f"{text}\n")
-            f.write("\n")
+            f.write(f"{text}\n\n")
 
 
 def generate_srt(
     video_path: Path,
     output_dir: Path,
     language: str = "es",
-    audio_profile: str = "old_film"
+    audio_profile: str = "old_film",
 ) -> Path:
-    """
-    Función principal que genera un SRT desde un video.
-    Esta es la función que usará la app web.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
 
     chunks_dir = output_dir / "chunks"
@@ -307,6 +289,7 @@ def generate_srt(
     start_sec = 0.0
 
     print("4) Procesando por chunks...")
+
     while start_sec < total_duration:
         current_duration = min(chunk_duration, total_duration - start_sec)
         chunk_path = chunks_dir / f"chunk_{chunk_index:04d}.wav"
@@ -316,14 +299,19 @@ def generate_srt(
             f"{start_sec:.2f}s a {start_sec + current_duration:.2f}s"
         )
 
-        extract_audio_chunk(audio_path, chunk_path, start_sec, current_duration)
+        extract_audio_chunk(
+            audio_path,
+            chunk_path,
+            start_sec,
+            current_duration,
+        )
 
         chunk_segments = transcribe_chunk(
             model=model,
             chunk_path=chunk_path,
             offset_sec=start_sec,
             language=language,
-            audio_profile=audio_profile
+            audio_profile=audio_profile,
         )
 
         all_segments.extend(chunk_segments)
@@ -333,7 +321,13 @@ def generate_srt(
 
     print("5) Uniendo segmentos cercanos...")
     final_segments = merge_close_segments(all_segments)
-    final_segments = split_long_segments(final_segments)
+
+    print("5.5) Partiendo subtítulos largos...")
+    final_segments = split_long_segments(
+        final_segments,
+        max_chars=110,
+        max_duration=7,
+    )
 
     print(f"6) Escribiendo SRT en: {srt_path}")
     write_srt(final_segments, srt_path)
